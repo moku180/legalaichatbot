@@ -1,0 +1,101 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Node
+node_modules/
+dist/
+.next/
+out/
+build/
+.cache/
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Data and uploads
+data/uploads/*
+data/vector_stores/*
+!data/.gitkeep
+!data/uploads/.gitkeep
+!data/vector_stores/.gitkeep
+
+# Test files
+test_*.py
+*_test.py
+manual_test.py
+quick_test.py
+init_database.py
+
+# Temporary files
+*.tmp
+*.temp
+.cache
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Redis
+dump.rdb
+
+# Frontend build
+frontend/dist/
+frontend/.vite/
+
+# Backend
+backend/data/uploads/*
+backend/data/vector_stores/*
+backend/logs/*
+
+# Scripts (keep only essential ones)
+stop_services.ps1
+prepare_deployment.ps1

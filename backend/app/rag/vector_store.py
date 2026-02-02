@@ -111,8 +111,11 @@ class VectorStore:
             # Add metadata
             self.metadatas[organization_id].extend([chunk["metadata"] for chunk in chunks])
             
-            # Save to disk
-            self.save_index(organization_id)
+            # Save to disk (non-blocking)
+            import asyncio
+            from functools import partial
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, partial(self.save_index, organization_id))
             
             return True
             

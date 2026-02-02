@@ -17,21 +17,33 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost"]
     
-    # Database
+    # Database - Railway provides DATABASE_URL directly
+    DATABASE_URL: Optional[str] = None  # Railway sets this automatically
     POSTGRES_USER: str = "legalai"
     POSTGRES_PASSWORD: str = "legalai_password"
-    POSTGRES_HOST: str = "postgres"
+    POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "legalai_db"
     
     @property
-    def DATABASE_URL(self) -> str:
-        """Construct database URL"""
+    def DB_URL(self) -> str:
+        """Get database URL - uses Railway's DATABASE_URL or constructs from components"""
+        # If DATABASE_URL is provided (Railway style), use it
+        if self.DATABASE_URL:
+            # Ensure it uses asyncpg driver
+            if self.DATABASE_URL.startswith("postgresql://"):
+                return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return self.DATABASE_URL
+        
+        # Otherwise construct from individual components (local development)
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
     
     @property
     def SYNC_DATABASE_URL(self) -> str:
         """Construct sync database URL for Alembic"""
+        if self.DATABASE_URL:
+            # Remove asyncpg driver for sync operations
+            return self.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://").replace("postgresql://", "postgresql://", 1)
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
     
     # Redis (optional - graceful degradation if not available)

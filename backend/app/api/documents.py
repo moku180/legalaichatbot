@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status, BackgroundTasks
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import get_db, AsyncSessionLocal
 from sqlalchemy import select, func
 from app.core.dependencies import get_current_user, get_current_organization, require_upload_permission

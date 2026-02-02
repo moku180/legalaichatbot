@@ -132,7 +132,9 @@ export default function Documents() {
                                     ) : (
                                         <span className="flex items-center gap-1 text-yellow-600">
                                             <Loader className="w-4 h-4 animate-spin" />
-                                            Processing...
+                                            {doc.processing_status ?
+                                                doc.processing_status.charAt(0).toUpperCase() + doc.processing_status.slice(1) + "..."
+                                                : "Processing..."}
                                         </span>
                                     )}
                                 </div>

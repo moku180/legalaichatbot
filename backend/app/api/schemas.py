@@ -59,6 +59,7 @@ class DocumentResponse(BaseModel):
     year: Optional[int]
     title: Optional[str]
     processed: bool
+    processing_status: Optional[str] = "queued"
     chunk_count: int
     uploaded_at: datetime
     processed_at: Optional[datetime]

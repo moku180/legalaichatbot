@@ -50,6 +50,7 @@ class Document(Base):
     
     # Processing status
     processed = Column(Boolean, default=False, nullable=False)
+    processing_status = Column(String(50), default="queued", nullable=True)  # queued, extracting, chunking, embedding, indexing, completed, failed
     processing_error = Column(Text, nullable=True)
     chunk_count = Column(Integer, default=0)
     

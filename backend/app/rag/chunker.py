@@ -14,6 +14,17 @@ class LegalDocumentChunker:
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        # Pre-compile regex patterns for performance
+        self.section_patterns = [
+            re.compile(p) for p in [
+                r'Section \d+',
+                r'Article \d+',
+                r'§\s*\d+',
+                r'Clause \d+',
+                r'\d+\.\s+[A-Z]'
+            ]
+        ]
+        self.split_pattern = re.compile(r'(Section \d+|Article \d+|§\s*\d+|Clause \d+)')
     
     def chunk_document(
         self,
@@ -43,16 +54,8 @@ class LegalDocumentChunker:
     
     def _has_section_markers(self, text: str) -> bool:
         """Check if document has section markers"""
-        section_patterns = [
-            r'Section \d+',
-            r'Article \d+',
-            r'§\s*\d+',
-            r'Clause \d+',
-            r'\d+\.\s+[A-Z]'
-        ]
-        
-        for pattern in section_patterns:
-            if re.search(pattern, text):
+        for pattern in self.section_patterns:
+            if pattern.search(text):
                 return True
         return False
     
@@ -65,14 +68,13 @@ class LegalDocumentChunker:
         chunks = []
         
         # Split by section markers
-        section_pattern = r'(Section \d+|Article \d+|§\s*\d+|Clause \d+)'
-        parts = re.split(section_pattern, text)
+        parts = self.split_pattern.split(text)
         
         current_section = None
         current_text = ""
         
         for part in parts:
-            if re.match(section_pattern, part):
+            if self.split_pattern.match(part):
                 # Save previous section
                 if current_text:
                     chunks.extend(

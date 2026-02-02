@@ -36,6 +36,8 @@ async def process_document_task(
                 return
 
             # Extract text
+            document.processing_status = "extracting"
+            await db.commit()
             text = document_processor.extract_text(str(file_path))
             
             # Extract metadata if not provided
@@ -47,6 +49,8 @@ async def process_document_task(
                     document.year = extracted_metadata.get("year")
             
             # Chunk document
+            document.processing_status = "chunking"
+            await db.commit()
             chunks = legal_chunker.chunk_document(
                 text=text,
                 metadata={
@@ -65,12 +69,16 @@ async def process_document_task(
                 chunk["metadata"]["text"] = chunk["text"]
             
             # Add to vector store
+            document.processing_status = "embedding"
+            await db.commit()
+            
             success = await vector_store.add_documents(
                 organization_id=organization_id,
                 chunks=chunks
             )
             
             if success:
+                document.processing_status = "completed"
                 document.processed = True
                 document.chunk_count = len(chunks)
                 from datetime import datetime

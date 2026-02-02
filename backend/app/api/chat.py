@@ -33,11 +33,26 @@ async def submit_query(
     
     start_time = time.time()
     
-    # Step 1: Safety check
-    safety_result = await safety_agent.check_safety(
-        query=query_data.query,
-        jurisdiction=query_data.jurisdiction
-    )
+    import asyncio
+
+    # Execute independent tasks in parallel
+    # 1. Safety Check (Gatekeeper)
+    # 2. Intent Classification (Router)
+    # 3. Retrieval (Context)
+    
+    tasks = [
+        safety_agent.check_safety(query=query_data.query, jurisdiction=query_data.jurisdiction),
+        orchestrator_agent.classify_intent(query_data.query),
+        retriever_agent.retrieve_with_mmr(
+            organization_id=organization.id,
+            query=query_data.query,
+            jurisdiction=query_data.jurisdiction,
+            top_k=5
+        )
+    ]
+    
+    results = await asyncio.gather(*tasks)
+    safety_result, classification, retrieved_chunks = results[0], results[1], results[2]
     
     if safety_agent.should_refuse(safety_result):
         # Refuse the request
@@ -55,17 +70,6 @@ async def submit_query(
             cost_estimate=0.0,
             response_time_ms=int((time.time() - start_time) * 1000)
         )
-    
-    # Step 2: Intent classification
-    classification = await orchestrator_agent.classify_intent(query_data.query)
-    
-    # Step 3: Retrieve relevant documents
-    retrieved_chunks = await retriever_agent.retrieve_with_mmr(
-        organization_id=organization.id,
-        query=query_data.query,
-        jurisdiction=query_data.jurisdiction,
-        top_k=5
-    )
     
     # Step 4: Route to appropriate specialist agent
     intent = classification.get("intent", "general_legal")

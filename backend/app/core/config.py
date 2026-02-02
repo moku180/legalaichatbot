@@ -125,7 +125,7 @@ class Settings(BaseSettings):
     
     # LLM Configuration - Google Gemini
     GEMINI_API_KEY: Optional[str] = None  # Made optional for deployment
-    GEMINI_MODEL: str = "models/gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-2.0-flash-exp"
     GEMINI_EMBEDDING_MODEL: str = "models/text-embedding-004"
     GEMINI_TEMPERATURE: float = 0.1
     GEMINI_MAX_TOKENS: int = 2000

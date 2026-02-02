@@ -14,6 +14,11 @@ export default function Documents() {
             const response = await documentsAPI.list();
             return response.data;
         },
+        // Poll every 3 seconds if any document is still processing
+        refetchInterval: (query) => {
+            const hasProcessingDocs = query.state.data?.some(doc => !doc.processed);
+            return hasProcessingDocs ? 3000 : false;
+        }
     });
 
     const deleteMutation = useMutation({

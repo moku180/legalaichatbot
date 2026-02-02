@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authAPI } from '../lib/api';
 import { Scale, AlertCircle } from 'lucide-react';
+import { extractErrorMessage } from '../lib/utils';
 
 export default function Register({ setAuth }) {
     const [formData, setFormData] = useState({
@@ -33,7 +34,7 @@ export default function Register({ setAuth }) {
             setAuth(true);
             navigate('/workspace');
         } catch (err) {
-            setError(err.response?.data?.detail || 'Registration failed. Please try again.');
+            setError(extractErrorMessage(err));
         } finally {
             setLoading(false);
         }

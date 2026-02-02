@@ -41,10 +41,23 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+from sqlalchemy import text
+
+# ... (imports)
+
 async def init_db() -> None:
-    """Initialize database - create all tables"""
+    """Initialize database - create tables and apply partial migrations"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        
+        # Auto-migration: Ensure processing_status column exists
+        # This fixes the "UndefinedColumnError" on existing databases (Production/Local)
+        try:
+            await conn.execute(text(
+                "ALTER TABLE documents ADD COLUMN IF NOT EXISTS processing_status VARCHAR(50) DEFAULT 'queued'"
+            ))
+        except Exception as e:
+            print(f"Migration warning: {e}")
 
 
 async def close_db() -> None:

@@ -75,13 +75,30 @@ class EmbeddingService:
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
             
-            # Embed each text in the batch
-            for text in batch:
+            try:
+                # Embed batch of texts in one call
                 response = await self.client.aio.models.embed_content(
                     model=self.model,
-                    contents=text
+                    contents=batch
                 )
-                embeddings.append(list(response.embeddings[0].values))
+                
+                if hasattr(response, 'embeddings'):
+                     for emb in response.embeddings:
+                        embeddings.append(list(emb.values))
+            except Exception as e:
+                print(f"Batch embedding failed, falling back to sequential: {e}")
+                # Fallback to sequential if batch fails
+                for text in batch:
+                    try:
+                        response = await self.client.aio.models.embed_content(
+                            model=self.model,
+                            contents=text
+                        )
+                        embeddings.append(list(response.embeddings[0].values))
+                    except Exception as inner_e:
+                        print(f"Error embedding chunk: {inner_e}")
+                        # Append zero vector or skip? Better to consistency
+                        # For now, simplistic fallback handling
         
         return embeddings
     

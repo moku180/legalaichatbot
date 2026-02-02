@@ -52,31 +52,6 @@ Our platform accelerates these tasks by **100x**. We are moving from "Computer-A
 
 The platform follows a **Microservices-ready Monolith** pattern, optimized for high throughput and strict data isolation.
 
-```mermaid
-graph TD
-    User[Client (React/Next.js)] -->|HTTPS| CDN[Cloudflare / Nginx]
-    CDN -->|Load Balanced| API[FastAPI Backend Cluster]
-    
-    subgraph "Application Core"
-        API --> Auth[Auth Middleware (JWT)]
-        Auth --> Tenant[Tenant Isolation Middleware]
-        Tenant --> Rate[Rate Limiter (Redis)]
-        Rate --> Router[Agent Router]
-    end
-    
-    subgraph "The Neural Center (Agent Swarm)"
-        Router --> Orch[Orchestrator Agent]
-        Orch -->|Delegates Context| Specialists[Specialist Agents]
-        Specialists --> Verifier[Verification Agent]
-    end
-    
-    subgraph "Data Layer"
-        Specialists <-->|Semantic Search| VectorDB[(FAISS Vector Store)]
-        API <-->|CRUD| SQL[(PostgreSQL - Users/Orgs)]
-        Verifier <-->|Cache Hits| Redis[(Redis Cache)]
-    end
-```
-
 ### Core Components
 1.  **Frontend**: React.js SPA with TailwindCSS, utilizing WebSocket for real-time agent thought-streaming.
 2.  **Backend**: FastAPI (Python 3.10+) running on Uvicorn workers. Asyncio everywhere for non-blocking I/O.

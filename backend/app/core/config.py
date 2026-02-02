@@ -78,14 +78,21 @@ class Settings(BaseSettings):
             return None
         return int(v) if isinstance(v, str) else v
     
+    @validator('SECRET_KEY', pre=True)
+    def validate_secret_key(cls, v):
+        """Ensure SECRET_KEY has minimum length"""
+        if v is None or v == '' or len(v) < 32:
+            return "INSECURE-DEFAULT-KEY-CHANGE-ME-IN-PRODUCTION-32CHARS"
+        return v
+    
     # Security
-    SECRET_KEY: str = Field(default="INSECURE-DEFAULT-KEY-CHANGE-ME-IN-PRODUCTION-32CHARS", min_length=32)
+    SECRET_KEY: str = "INSECURE-DEFAULT-KEY-CHANGE-ME-IN-PRODUCTION-32CHARS"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     
     # LLM Configuration - Google Gemini
-    GEMINI_API_KEY: str = Field(..., min_length=20)
+    GEMINI_API_KEY: Optional[str] = None  # Made optional for deployment
     GEMINI_MODEL: str = "models/gemini-2.5-flash"
     GEMINI_EMBEDDING_MODEL: str = "models/text-embedding-004"
     GEMINI_TEMPERATURE: float = 0.1

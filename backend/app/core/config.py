@@ -71,8 +71,15 @@ class Settings(BaseSettings):
         """Get Celery result backend URL"""
         return self.CELERY_RESULT_BACKEND or self.REDIS_CONNECTION_URL
     
+    @validator('REDIS_PORT', pre=True)
+    def validate_redis_port(cls, v):
+        """Convert empty string to None for REDIS_PORT"""
+        if v == '' or v is None:
+            return None
+        return int(v) if isinstance(v, str) else v
+    
     # Security
-    SECRET_KEY: str = Field(..., min_length=32)
+    SECRET_KEY: str = Field(default="INSECURE-DEFAULT-KEY-CHANGE-ME-IN-PRODUCTION-32CHARS", min_length=32)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days

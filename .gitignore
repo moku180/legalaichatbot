@@ -65,7 +65,6 @@ test_*.py
 *_test.py
 manual_test.py
 quick_test.py
-init_database.py
 
 # Temporary files
 *.tmp
@@ -96,6 +95,9 @@ backend/data/uploads/*
 backend/data/vector_stores/*
 backend/logs/*
 
-# Scripts (keep only essential ones)
-stop_services.ps1
+# Removed files (no longer in project)
+DEPLOYMENT_GUIDE.md
+RENDER_CONFIG.md
 prepare_deployment.ps1
+init_database.py
+sample_data/

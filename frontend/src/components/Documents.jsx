@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { documentsAPI } from '../lib/api';
 import { Upload, FileText, Trash2, CheckCircle, XCircle, Loader } from 'lucide-react';
+import { extractErrorMessage } from '../lib/utils';
 
 export default function Documents() {
     const [uploading, setUploading] = useState(false);
@@ -36,7 +37,7 @@ export default function Documents() {
             await documentsAPI.upload(formData);
             queryClient.invalidateQueries(['documents']);
         } catch (error) {
-            alert(error.response?.data?.detail || 'Upload failed');
+            alert(extractErrorMessage(error, 'Upload failed'));
         } finally {
             setUploading(false);
             e.target.value = '';

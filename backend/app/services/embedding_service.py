@@ -50,7 +50,7 @@ class EmbeddingService:
         """
         response = await self.client.aio.models.embed_content(
             model=self.model,
-            content=query
+            contents=query
         )
         return list(response.embeddings[0].values)
     

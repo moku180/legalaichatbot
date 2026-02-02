@@ -17,6 +17,10 @@ from app.agents.statutory_interpreter import statutory_interpreter_agent
 from app.agents.case_law_researcher import case_law_researcher_agent
 from app.agents.contract_analyzer import contract_analyzer_agent
 from app.agents.compliance_agent import compliance_agent
+import logging
+import traceback
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -31,170 +35,179 @@ async def submit_query(
 ):
     """Submit legal query and get AI-powered response"""
     
-    start_time = time.time()
-    
-    import asyncio
+    try:
+        start_time = time.time()
+        
+        import asyncio
 
-    # Execute independent tasks in parallel
-    # 1. Safety Check (Gatekeeper)
-    # 2. Intent Classification (Router)
-    # 3. Retrieval (Context)
-    
-    tasks = [
-        safety_agent.check_safety(query=query_data.query, jurisdiction=query_data.jurisdiction),
-        orchestrator_agent.classify_intent(query_data.query),
-        retriever_agent.retrieve_with_mmr(
-            organization_id=organization.id,
+        # Execute independent tasks in parallel
+        # 1. Safety Check (Gatekeeper)
+        # 2. Intent Classification (Router)
+        # 3. Retrieval (Context)
+        
+        tasks = [
+            safety_agent.check_safety(query=query_data.query, jurisdiction=query_data.jurisdiction),
+            orchestrator_agent.classify_intent(query_data.query),
+            retriever_agent.retrieve_with_mmr(
+                organization_id=organization.id,
+                query=query_data.query,
+                jurisdiction=query_data.jurisdiction,
+                top_k=5
+            )
+        ]
+        
+        results = await asyncio.gather(*tasks)
+        safety_result, classification, retrieved_chunks = results[0], results[1], results[2]
+        
+        if safety_agent.should_refuse(safety_result):
+            # Refuse the request
+            return ChatResponse(
+                query_id=0,
+                query=query_data.query,
+                response=f"Request refused: {safety_result['reason']}\n\n{safety_result['suggested_action']}",
+                intent="refused",
+                agents_used=["safety"],
+                citations=[],
+                confidence_score=0.0,
+                safety_check=safety_result["safety_check"],
+                disclaimer=safety_result["disclaimer_text"],
+                tokens_used=0,
+                cost_estimate=0.0,
+                response_time_ms=int((time.time() - start_time) * 1000)
+            )
+        
+        # Step 4: Route to appropriate specialist agent
+        intent = classification.get("intent", "general_legal")
+        # Ensure intent is a string (default fallback)
+        if not isinstance(intent, str):
+            intent = "general_legal"
+            
+        response_text = ""
+        total_tokens = 0
+        total_cost = 0.0
+        agents_used = ["orchestrator", "safety", "retriever"]
+        
+        # Always pass retrieved_chunks to agents (even if empty) so they can combine with general knowledge
+        if intent == "statutory_interpretation":
+            result = await statutory_interpreter_agent.interpret_statute(
+                query=query_data.query,
+                retrieved_chunks=retrieved_chunks  # Pass even if empty
+            )
+            response_text = result.get("interpretation", "")
+            total_tokens += result.get("tokens_used", 0)
+            total_cost += result.get("cost", 0.0)
+            agents_used.append("statutory_interpreter")
+            
+        elif intent == "case_law_research":
+            result = await case_law_researcher_agent.research_case_law(
+                query=query_data.query,
+                retrieved_chunks=retrieved_chunks  # Pass even if empty
+            )
+            response_text = result.get("case_analysis", "")
+            total_tokens += result.get("tokens_used", 0)
+            total_cost += result.get("cost", 0.0)
+            agents_used.append("case_law_researcher")
+            
+        elif intent == "contract_analysis":
+            result = await contract_analyzer_agent.analyze_contract(
+                query=query_data.query,
+                contract_text=query_data.query  # Assume query contains contract
+            )
+            response_text = result.get("contract_analysis", "")
+            total_tokens += result.get("tokens_used", 0)
+            total_cost += result.get("cost", 0.0)
+            agents_used.append("contract_analyzer")
+            
+        elif intent == "compliance_check":
+            result = await compliance_agent.check_compliance(
+                query=query_data.query,
+                retrieved_chunks=retrieved_chunks  # Pass even if empty
+            )
+            response_text = result.get("compliance_analysis", "")
+            total_tokens += result.get("tokens_used", 0)
+            total_cost += result.get("cost", 0.0)
+            agents_used.append("compliance_agent")
+        else:
+            # Hybrid approach: ALWAYS combine documents with general knowledge
+            from app.agents.prompts import HYBRID_LEGAL_PROMPT
+            from app.services.llm_service import llm_service
+            
+            # Build context from retrieved documents (if any)
+            context = ""
+            if retrieved_chunks:
+                context = "\n\n--- RELEVANT DOCUMENTS ---\n\n"
+                context += "\n\n".join([f"Document: {chunk['metadata'].get('title', 'Unknown')}\n{chunk['text']}" 
+                                         for chunk in retrieved_chunks[:3]])
+                context += "\n\n--- END DOCUMENTS ---\n\n"
+            
+            # Always use hybrid legal agent to combine document info with general knowledge
+            hybrid_response = await llm_service.chat_completion(
+                messages=[
+                    {"role": "system", "content": HYBRID_LEGAL_PROMPT},
+                    {"role": "user", "content": f"{context}\n\nUser Query: {query_data.query}\n\nPlease answer by combining information from the provided documents (if any) with relevant general legal knowledge to give a comprehensive response."}
+                ],
+                temperature=0.3
+            )
+            response_text = hybrid_response.get("content", "")
+            total_tokens += hybrid_response.get("total_tokens", 0)
+            total_cost += hybrid_response.get("cost", 0.0)
+            agents_used.append("hybrid_legal_agent")
+        
+        # Step 5: Verification
+        verification = await verification_agent.verify_response(
             query=query_data.query,
-            jurisdiction=query_data.jurisdiction,
-            top_k=5
+            response=response_text,
+            retrieved_chunks=retrieved_chunks
         )
-    ]
-    
-    results = await asyncio.gather(*tasks)
-    safety_result, classification, retrieved_chunks = results[0], results[1], results[2]
-    
-    if safety_agent.should_refuse(safety_result):
-        # Refuse the request
-        return ChatResponse(
-            query_id=0,
+        agents_used.append("verification")
+        
+        # Step 6: Add disclaimer
+        final_response = f"{response_text}\n\n---\n\n{safety_result['disclaimer_text']}"
+        
+        # Step 7: Extract citations
+        citations = [
+            Citation(
+                source=chunk["metadata"].get("title", "Unknown"),
+                text=chunk["text"][:200] + "...",
+                metadata=chunk["metadata"]
+            )
+            for chunk in retrieved_chunks[:3]
+        ] if query_data.include_citations else []
+        
+        # Step 8: Save to query history
+        query_history = QueryHistory(
+            organization_id=organization.id,
+            user_id=current_user.id,
             query=query_data.query,
-            response=f"Request refused: {safety_result['reason']}\n\n{safety_result['suggested_action']}",
-            intent="refused",
-            agents_used=["safety"],
-            citations=[],
-            confidence_score=0.0,
+            response=final_response,
+            intent_classification=intent,
+            agents_used=agents_used,
+            citations=[c.dict() for c in citations],
+            confidence_score=verification.get("confidence_score", 0.0),
+            total_tokens=total_tokens,
+            cost_estimate=total_cost,
+            response_time_ms=int((time.time() - start_time) * 1000),
+            safety_triggered=safety_result.get("safety_check") if safety_result.get("safety_check") != "PASS" else None
+        )
+        db.add(query_history)
+        await db.commit()
+        await db.refresh(query_history)
+        
+        return ChatResponse(
+            query_id=query_history.id,
+            query=query_data.query,
+            response=final_response,
+            intent=intent,
+            agents_used=agents_used,
+            citations=citations,
+            confidence_score=verification.get("confidence_score", 0.0),
             safety_check=safety_result["safety_check"],
             disclaimer=safety_result["disclaimer_text"],
-            tokens_used=0,
-            cost_estimate=0.0,
+            tokens_used=total_tokens,
+            cost_estimate=total_cost,
             response_time_ms=int((time.time() - start_time) * 1000)
         )
-    
-    # Step 4: Route to appropriate specialist agent
-    intent = classification.get("intent", "general_legal")
-    response_text = ""
-    total_tokens = 0
-    total_cost = 0.0
-    agents_used = ["orchestrator", "safety", "retriever"]
-    
-    # Always pass retrieved_chunks to agents (even if empty) so they can combine with general knowledge
-    if intent == "statutory_interpretation":
-        result = await statutory_interpreter_agent.interpret_statute(
-            query=query_data.query,
-            retrieved_chunks=retrieved_chunks  # Pass even if empty
-        )
-        response_text = result.get("interpretation", "")
-        total_tokens += result.get("tokens_used", 0)
-        total_cost += result.get("cost", 0.0)
-        agents_used.append("statutory_interpreter")
-        
-    elif intent == "case_law_research":
-        result = await case_law_researcher_agent.research_case_law(
-            query=query_data.query,
-            retrieved_chunks=retrieved_chunks  # Pass even if empty
-        )
-        response_text = result.get("case_analysis", "")
-        total_tokens += result.get("tokens_used", 0)
-        total_cost += result.get("cost", 0.0)
-        agents_used.append("case_law_researcher")
-        
-    elif intent == "contract_analysis":
-        result = await contract_analyzer_agent.analyze_contract(
-            query=query_data.query,
-            contract_text=query_data.query  # Assume query contains contract
-        )
-        response_text = result.get("contract_analysis", "")
-        total_tokens += result.get("tokens_used", 0)
-        total_cost += result.get("cost", 0.0)
-        agents_used.append("contract_analyzer")
-        
-    elif intent == "compliance_check":
-        result = await compliance_agent.check_compliance(
-            query=query_data.query,
-            retrieved_chunks=retrieved_chunks  # Pass even if empty
-        )
-        response_text = result.get("compliance_analysis", "")
-        total_tokens += result.get("tokens_used", 0)
-        total_cost += result.get("cost", 0.0)
-        agents_used.append("compliance_agent")
-    else:
-        # Hybrid approach: ALWAYS combine documents with general knowledge
-        from app.agents.prompts import HYBRID_LEGAL_PROMPT
-        from app.services.llm_service import llm_service
-        
-        # Build context from retrieved documents (if any)
-        context = ""
-        if retrieved_chunks:
-            context = "\n\n--- RELEVANT DOCUMENTS ---\n\n"
-            context += "\n\n".join([f"Document: {chunk['metadata'].get('title', 'Unknown')}\n{chunk['text']}" 
-                                     for chunk in retrieved_chunks[:3]])
-            context += "\n\n--- END DOCUMENTS ---\n\n"
-        
-        # Always use hybrid legal agent to combine document info with general knowledge
-        hybrid_response = await llm_service.chat_completion(
-            messages=[
-                {"role": "system", "content": HYBRID_LEGAL_PROMPT},
-                {"role": "user", "content": f"{context}\n\nUser Query: {query_data.query}\n\nPlease answer by combining information from the provided documents (if any) with relevant general legal knowledge to give a comprehensive response."}
-            ],
-            temperature=0.3
-        )
-        response_text = hybrid_response.get("content", "")
-        total_tokens += hybrid_response.get("total_tokens", 0)
-        total_cost += hybrid_response.get("cost", 0.0)
-        agents_used.append("hybrid_legal_agent")
-    
-    # Step 5: Verification
-    verification = await verification_agent.verify_response(
-        query=query_data.query,
-        response=response_text,
-        retrieved_chunks=retrieved_chunks
-    )
-    agents_used.append("verification")
-    
-    # Step 6: Add disclaimer
-    final_response = f"{response_text}\n\n---\n\n{safety_result['disclaimer_text']}"
-    
-    # Step 7: Extract citations
-    citations = [
-        Citation(
-            source=chunk["metadata"].get("title", "Unknown"),
-            text=chunk["text"][:200] + "...",
-            metadata=chunk["metadata"]
-        )
-        for chunk in retrieved_chunks[:3]
-    ] if query_data.include_citations else []
-    
-    # Step 8: Save to query history
-    query_history = QueryHistory(
-        organization_id=organization.id,
-        user_id=current_user.id,
-        query=query_data.query,
-        response=final_response,
-        intent_classification=intent,
-        agents_used=agents_used,
-        citations=[c.dict() for c in citations],
-        confidence_score=verification.get("confidence_score", 0.0),
-        total_tokens=total_tokens,
-        cost_estimate=total_cost,
-        response_time_ms=int((time.time() - start_time) * 1000),
-        safety_triggered=safety_result.get("safety_check") if safety_result.get("safety_check") != "PASS" else None
-    )
-    db.add(query_history)
-    await db.commit()
-    await db.refresh(query_history)
-    
-    return ChatResponse(
-        query_id=query_history.id,
-        query=query_data.query,
-        response=final_response,
-        intent=intent,
-        agents_used=agents_used,
-        citations=citations,
-        confidence_score=verification.get("confidence_score", 0.0),
-        safety_check=safety_result["safety_check"],
-        disclaimer=safety_result["disclaimer_text"],
-        tokens_used=total_tokens,
-        cost_estimate=total_cost,
-        response_time_ms=int((time.time() - start_time) * 1000)
-    )
+    except Exception as e:
+        logger.error(f"Error in chat query: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")

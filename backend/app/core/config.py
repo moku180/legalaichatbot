@@ -15,7 +15,15 @@ class Settings(BaseSettings):
     
     # API
     API_V1_PREFIX: str = "/api/v1"
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost"]
+    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost", "http://localhost:5173"]
+    
+    @validator("BACKEND_CORS_ORIGINS", pre=True)
+    def assemble_cors_origins(cls, v: str | List[str]) -> List[str] | str:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",")]
+        elif isinstance(v, (list, str)):
+            return v
+        raise ValueError(v)
     
     # Database - Railway provides DATABASE_URL directly
     DATABASE_URL: Optional[str] = None  # Railway sets this automatically

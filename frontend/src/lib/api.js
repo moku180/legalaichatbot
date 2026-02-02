@@ -1,6 +1,20 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+// Helper to ensure correct API URL format
+const getBaseUrl = () => {
+    let url = import.meta.env.VITE_API_URL || '/api/v1';
+    // Remove trailing slash if present
+    if (url.endsWith('/')) {
+        url = url.slice(0, -1);
+    }
+    // Append /api/v1 if not present
+    if (!url.endsWith('/api/v1')) {
+        url = `${url}/api/v1`;
+    }
+    return url;
+};
+
+const API_BASE_URL = getBaseUrl();
 
 // Create axios instance
 const api = axios.create({

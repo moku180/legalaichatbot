@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, s
 
 from app.db.base import get_db, AsyncSessionLocal
 
-# ... imports ...
+router = APIRouter(prefix="/documents", tags=["documents"])
 
 async def process_document_task(
     document_id: int,

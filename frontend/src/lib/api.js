@@ -2,7 +2,8 @@ import axios from 'axios';
 
 // Helper to ensure correct API URL format
 const getBaseUrl = () => {
-    let url = import.meta.env.VITE_API_URL || '/api/v1';
+    // Fallback to the hardcoded production URL if env var is missing
+    let url = import.meta.env.VITE_API_URL || 'https://legalaichatbot-production-c90c.up.railway.app';
     // Remove trailing slash if present
     if (url.endsWith('/')) {
         url = url.slice(0, -1);

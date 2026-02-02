@@ -3,26 +3,77 @@ import os
 import shutil
 from pathlib import Path
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from app.db.base import get_db
-from app.core.dependencies import get_current_user, get_current_organization, require_upload_permission
-from app.core.config import settings
-from app.models.user import User
-from app.models.organization import Organization
-from app.models.document import Document, DocumentType, CourtLevel
-from app.api.schemas import DocumentResponse
-from app.rag.document_processor import document_processor
-from app.rag.chunker import legal_chunker
-from app.rag.vector_store import vector_store
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status, BackgroundTasks
 
+# ... imports ...
 
-router = APIRouter(prefix="/documents", tags=["documents"])
+async def process_document_task(
+    document_id: int,
+    file_path: str,
+    organization_id: int,
+    db: AsyncSession
+):
+    """Background task to process document"""
+    try:
+        # Re-fetch document to ensure attached session
+        result = await db.execute(select(Document).where(Document.id == document_id))
+        document = result.scalar_one_or_none()
+        
+        if not document:
+            return
+
+        # Extract text
+        text = document_processor.extract_text(str(file_path))
+        
+        # Extract metadata if not provided
+        if not document.jurisdiction or not document.year:
+            extracted_metadata = document_processor.extract_metadata(text, document.filename)
+            if not document.jurisdiction:
+                document.jurisdiction = extracted_metadata.get("jurisdiction")
+            if not document.year:
+                document.year = extracted_metadata.get("year")
+        
+        # Chunk document
+        chunks = legal_chunker.chunk_document(
+            text=text,
+            metadata={
+                "document_id": document.id,
+                "organization_id": organization_id,
+                "title": document.title,
+                "jurisdiction": document.jurisdiction,
+                "court_level": document.court_level.value,
+                "year": document.year,
+                "document_type": document.document_type.value
+            }
+        )
+        
+        # Add text to chunks for storage
+        for chunk in chunks:
+            chunk["metadata"]["text"] = chunk["text"]
+        
+        # Add to vector store
+        success = await vector_store.add_documents(
+            organization_id=organization_id,
+            chunks=chunks
+        )
+        
+        if success:
+            document.processed = True
+            document.chunk_count = len(chunks)
+            from datetime import datetime
+            document.processed_at = datetime.utcnow()
+        else:
+            document.processing_error = "Failed to add to vector store"
+        
+    except Exception as e:
+        document.processing_error = str(e)
+    
+    await db.commit()
 
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     jurisdiction: str = Form(None),
     document_type: str = Form("other"),
@@ -82,57 +133,14 @@ async def upload_document(
     await db.commit()
     await db.refresh(document)
     
-    # Process document asynchronously (in production, use Celery)
-    # For now, process synchronously
-    try:
-        # Extract text
-        text = document_processor.extract_text(str(file_path))
-        
-        # Extract metadata if not provided
-        if not jurisdiction or not year:
-            extracted_metadata = document_processor.extract_metadata(text, file.filename)
-            if not jurisdiction:
-                document.jurisdiction = extracted_metadata.get("jurisdiction")
-            if not year:
-                document.year = extracted_metadata.get("year")
-        
-        # Chunk document
-        chunks = legal_chunker.chunk_document(
-            text=text,
-            metadata={
-                "document_id": document.id,
-                "organization_id": organization.id,
-                "title": document.title,
-                "jurisdiction": document.jurisdiction,
-                "court_level": document.court_level.value,
-                "year": document.year,
-                "document_type": document.document_type.value
-            }
-        )
-        
-        # Add text to chunks for storage
-        for chunk in chunks:
-            chunk["metadata"]["text"] = chunk["text"]
-        
-        # Add to vector store
-        success = await vector_store.add_documents(
-            organization_id=organization.id,
-            chunks=chunks
-        )
-        
-        if success:
-            document.processed = True
-            document.chunk_count = len(chunks)
-            from datetime import datetime
-            document.processed_at = datetime.utcnow()
-        else:
-            document.processing_error = "Failed to add to vector store"
-        
-    except Exception as e:
-        document.processing_error = str(e)
-    
-    await db.commit()
-    await db.refresh(document)
+    # Add processing to background tasks
+    background_tasks.add_task(
+        process_document_task,
+        document.id,
+        str(file_path),
+        organization.id,
+        db
+    )
     
     return document
 

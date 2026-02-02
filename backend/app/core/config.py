@@ -34,32 +34,42 @@ class Settings(BaseSettings):
         """Construct sync database URL for Alembic"""
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
     
-    # Redis
-    REDIS_HOST: str = "redis"
-    REDIS_PORT: int = 6379
+    # Redis (optional - graceful degradation if not available)
+    REDIS_URL: Optional[str] = None  # Railway provides this
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: Optional[int] = 6379  # Made optional with default
     REDIS_DB: int = 0
     REDIS_PASSWORD: Optional[str] = None
     
     @property
-    def REDIS_URL(self) -> str:
-        """Construct Redis URL"""
+    def REDIS_CONNECTION_URL(self) -> Optional[str]:
+        """Get Redis URL - supports both REDIS_URL and individual components"""
+        # If REDIS_URL is provided (Railway style), use it
+        if self.REDIS_URL:
+            return self.REDIS_URL
+        
+        # If Redis is disabled or port is None, return None
+        if self.REDIS_PORT is None:
+            return None
+            
+        # Otherwise construct from individual components
         if self.REDIS_PASSWORD:
             return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
     
-    # Celery
+    # Celery (optional - not used in Railway deployment)
     CELERY_BROKER_URL: Optional[str] = None
     CELERY_RESULT_BACKEND: Optional[str] = None
     
     @property
-    def CELERY_BROKER(self) -> str:
+    def CELERY_BROKER(self) -> Optional[str]:
         """Get Celery broker URL"""
-        return self.CELERY_BROKER_URL or self.REDIS_URL
+        return self.CELERY_BROKER_URL or self.REDIS_CONNECTION_URL
     
     @property
-    def CELERY_BACKEND(self) -> str:
+    def CELERY_BACKEND(self) -> Optional[str]:
         """Get Celery result backend URL"""
-        return self.CELERY_RESULT_BACKEND or self.REDIS_URL
+        return self.CELERY_RESULT_BACKEND or self.REDIS_CONNECTION_URL
     
     # Security
     SECRET_KEY: str = Field(..., min_length=32)

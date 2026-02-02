@@ -15,11 +15,22 @@ class RateLimiter:
     
     async def init(self):
         """Initialize Redis connection"""
-        self.redis = await aioredis.from_url(
-            settings.REDIS_URL,
-            encoding="utf-8",
-            decode_responses=True
-        )
+        redis_url = settings.REDIS_CONNECTION_URL
+        if not redis_url:
+            # Redis not configured, rate limiting will be disabled
+            self.redis = None
+            return
+            
+        try:
+            self.redis = await aioredis.from_url(
+                redis_url,
+                encoding="utf-8",
+                decode_responses=True
+            )
+        except Exception as e:
+            # If Redis connection fails, disable rate limiting gracefully
+            print(f"Warning: Redis connection failed: {e}. Rate limiting disabled.")
+            self.redis = None
     
     async def close(self):
         """Close Redis connection"""

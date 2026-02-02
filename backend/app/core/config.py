@@ -1,5 +1,5 @@
 """Application configuration using Pydantic Settings"""
-from typing import Optional, List
+from typing import Optional, List, Any
 from pydantic_settings import BaseSettings
 from pydantic import Field, validator
 
@@ -15,15 +15,27 @@ class Settings(BaseSettings):
     
     # API
     API_V1_PREFIX: str = "/api/v1"
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost", "http://localhost:5173"]
+    BACKEND_CORS_ORIGINS: Any = ["http://localhost:3000", "http://localhost", "http://localhost:5173"]
     
     @validator("BACKEND_CORS_ORIGINS", pre=True)
     def assemble_cors_origins(cls, v: str | List[str]) -> List[str] | str:
         if isinstance(v, str) and not v.startswith("["):
             return [i.strip() for i in v.split(",")]
-        elif isinstance(v, (list, str)):
+        elif isinstance(v, str) and v.startswith("["):
+            import json
+            try:
+                return json.loads(v)
+            except Exception:
+                # If JSON parsing fails, try cleaning up common issues or fallback to comma-split
+                cleaned_v = v.replace("'", '"')
+                try:
+                    return json.loads(cleaned_v)
+                except Exception:
+                    # Final fallback: strip brackets and try comma-split
+                    return [i.strip() for i in v.strip("[]").split(",")]
+        elif isinstance(v, list):
             return v
-        raise ValueError(v)
+        return v
     
     # Database - Railway provides DATABASE_URL directly
     DATABASE_URL: Optional[str] = None  # Railway sets this automatically

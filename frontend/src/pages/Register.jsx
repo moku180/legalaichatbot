@@ -139,6 +139,14 @@ export default function Register({ setAuth }) {
                         Sign in here
                     </Link>
                 </p>
+
+                {/* Debug Info Section */}
+                <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200 text-xs text-mono text-gray-500 overflow-hidden">
+                    <p className="font-bold mb-2">Debug Info (Take a screenshot if this fails):</p>
+                    <p>VITE_API_URL: {import.meta.env.VITE_API_URL || '(Not Set)'}</p>
+                    <p>Mode: {import.meta.env.MODE}</p>
+                    <p>Browser URL: {window.location.href}</p>
+                </div>
             </div>
         </div>
     );

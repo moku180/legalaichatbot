@@ -5,70 +5,73 @@ from pathlib import Path
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status, BackgroundTasks
 
+from app.db.base import get_db, AsyncSessionLocal
+
 # ... imports ...
 
 async def process_document_task(
     document_id: int,
     file_path: str,
-    organization_id: int,
-    db: AsyncSession
+    organization_id: int
 ):
     """Background task to process document"""
-    try:
-        # Re-fetch document to ensure attached session
-        result = await db.execute(select(Document).where(Document.id == document_id))
-        document = result.scalar_one_or_none()
-        
-        if not document:
-            return
+    async with AsyncSessionLocal() as db:
+        try:
+            # Re-fetch document to ensure attached session
+            result = await db.execute(select(Document).where(Document.id == document_id))
+            document = result.scalar_one_or_none()
+            
+            if not document:
+                return
 
-        # Extract text
-        text = document_processor.extract_text(str(file_path))
-        
-        # Extract metadata if not provided
-        if not document.jurisdiction or not document.year:
-            extracted_metadata = document_processor.extract_metadata(text, document.filename)
-            if not document.jurisdiction:
-                document.jurisdiction = extracted_metadata.get("jurisdiction")
-            if not document.year:
-                document.year = extracted_metadata.get("year")
-        
-        # Chunk document
-        chunks = legal_chunker.chunk_document(
-            text=text,
-            metadata={
-                "document_id": document.id,
-                "organization_id": organization_id,
-                "title": document.title,
-                "jurisdiction": document.jurisdiction,
-                "court_level": document.court_level.value,
-                "year": document.year,
-                "document_type": document.document_type.value
-            }
-        )
-        
-        # Add text to chunks for storage
-        for chunk in chunks:
-            chunk["metadata"]["text"] = chunk["text"]
-        
-        # Add to vector store
-        success = await vector_store.add_documents(
-            organization_id=organization_id,
-            chunks=chunks
-        )
-        
-        if success:
-            document.processed = True
-            document.chunk_count = len(chunks)
-            from datetime import datetime
-            document.processed_at = datetime.utcnow()
-        else:
-            document.processing_error = "Failed to add to vector store"
-        
-    except Exception as e:
-        document.processing_error = str(e)
-    
-    await db.commit()
+            # Extract text
+            text = document_processor.extract_text(str(file_path))
+            
+            # Extract metadata if not provided
+            if not document.jurisdiction or not document.year:
+                extracted_metadata = document_processor.extract_metadata(text, document.filename)
+                if not document.jurisdiction:
+                    document.jurisdiction = extracted_metadata.get("jurisdiction")
+                if not document.year:
+                    document.year = extracted_metadata.get("year")
+            
+            # Chunk document
+            chunks = legal_chunker.chunk_document(
+                text=text,
+                metadata={
+                    "document_id": document.id,
+                    "organization_id": organization_id,
+                    "title": document.title,
+                    "jurisdiction": document.jurisdiction,
+                    "court_level": document.court_level.value,
+                    "year": document.year,
+                    "document_type": document.document_type.value
+                }
+            )
+            
+            # Add text to chunks for storage
+            for chunk in chunks:
+                chunk["metadata"]["text"] = chunk["text"]
+            
+            # Add to vector store
+            success = await vector_store.add_documents(
+                organization_id=organization_id,
+                chunks=chunks
+            )
+            
+            if success:
+                document.processed = True
+                document.chunk_count = len(chunks)
+                from datetime import datetime
+                document.processed_at = datetime.utcnow()
+            else:
+                document.processing_error = "Failed to add to vector store"
+            
+            await db.commit()
+            
+        except Exception as e:
+            document.processing_error = str(e)
+            await db.commit()
 
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -138,8 +141,7 @@ async def upload_document(
         process_document_task,
         document.id,
         str(file_path),
-        organization.id,
-        db
+        organization.id
     )
     
     return document

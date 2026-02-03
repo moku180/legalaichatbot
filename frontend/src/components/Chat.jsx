@@ -11,8 +11,9 @@ export default function Chat() {
         mutationFn: chatAPI.query,
         onSuccess: (response) => {
             const data = response.data;
-            setMessages([
-                ...messages,
+            // Use functional updates to avoid stale closure
+            setMessages((prevMessages) => [
+                ...prevMessages,
                 { role: 'user', content: query },
                 {
                     role: 'assistant',
@@ -23,14 +24,34 @@ export default function Chat() {
                     agents: data.agents_used
                 },
             ]);
+            // Clear input after successful submission
             setQuery('');
         },
         onError: (error) => {
-            setMessages([
-                ...messages,
+            // User-friendly error messages
+            let errorMessage = 'We encountered an issue processing your request. Please try again.';
+
+            if (error.response?.status === 401) {
+                errorMessage = 'Your session has expired. Please log in again.';
+            } else if (error.response?.status === 429) {
+                errorMessage = 'Too many requests. Please wait a moment before trying again.';
+            } else if (error.response?.status >= 500) {
+                errorMessage = 'Our service is temporarily unavailable. Please try again in a few moments.';
+            } else if (error.response?.data?.detail) {
+                // Only show backend error if it's user-friendly
+                const detail = error.response.data.detail;
+                if (!detail.includes('Internal Server Error') && !detail.includes('RetryError')) {
+                    errorMessage = detail;
+                }
+            }
+
+            setMessages((prevMessages) => [
+                ...prevMessages,
                 { role: 'user', content: query },
-                { role: 'error', content: error.response?.data?.detail || 'An error occurred' },
+                { role: 'error', content: errorMessage },
             ]);
+            // Clear input even on error
+            setQuery('');
         },
     });
 

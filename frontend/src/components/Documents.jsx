@@ -1,12 +1,25 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { documentsAPI } from '../lib/api';
-import { Upload, FileText, Trash2, CheckCircle, XCircle, Loader } from 'lucide-react';
+import { Upload, FileText, Trash2, CheckCircle, XCircle, Loader, AlertCircle } from 'lucide-react';
 import { extractErrorMessage } from '../lib/utils';
 
 export default function Documents() {
     const [uploading, setUploading] = useState(false);
+    const [error, setError] = useState(null);
+    const [success, setSuccess] = useState(null);
     const queryClient = useQueryClient();
+
+    // Auto-dismiss notifications
+    const showNotification = (type, message) => {
+        if (type === 'error') {
+            setError(message);
+            setTimeout(() => setError(null), 5000);
+        } else {
+            setSuccess(message);
+            setTimeout(() => setSuccess(null), 3000);
+        }
+    };
 
     const { data: documents, isLoading } = useQuery({
         queryKey: ['documents'],
@@ -25,6 +38,13 @@ export default function Documents() {
         mutationFn: documentsAPI.delete,
         onSuccess: () => {
             queryClient.invalidateQueries(['documents']);
+            showNotification('success', 'Document deleted successfully');
+        },
+        onError: (error) => {
+            const message = error.response?.status === 404
+                ? 'Document not found'
+                : 'Failed to delete document. Please try again.';
+            showNotification('error', message);
         },
     });
 
@@ -41,8 +61,19 @@ export default function Documents() {
         try {
             await documentsAPI.upload(formData);
             queryClient.invalidateQueries(['documents']);
+            showNotification('success', 'Document uploaded successfully');
         } catch (error) {
-            alert(extractErrorMessage(error, 'Upload failed'));
+            let errorMessage = 'Upload failed. Please try again.';
+
+            if (error.response?.status === 413) {
+                errorMessage = 'File is too large. Maximum size is 50MB.';
+            } else if (error.response?.status === 415) {
+                errorMessage = 'File type not supported. Please upload PDF, DOCX, or TXT files.';
+            } else if (error.response?.data?.detail && !error.response.data.detail.includes('Internal Server Error')) {
+                errorMessage = error.response.data.detail;
+            }
+
+            showNotification('error', errorMessage);
         } finally {
             setUploading(false);
             e.target.value = '';
@@ -51,6 +82,26 @@ export default function Documents() {
 
     return (
         <div className="h-screen flex flex-col">
+            {/* Notifications */}
+            {error && (
+                <div className="fixed top-4 right-4 z-50 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 max-w-md animate-slide-in">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                    <p className="text-sm">{error}</p>
+                    <button onClick={() => setError(null)} className="ml-auto text-red-600 hover:text-red-800">
+                        <XCircle className="w-4 h-4" />
+                    </button>
+                </div>
+            )}
+            {success && (
+                <div className="fixed top-4 right-4 z-50 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 max-w-md animate-slide-in">
+                    <CheckCircle className="w-5 h-5 flex-shrink-0" />
+                    <p className="text-sm">{success}</p>
+                    <button onClick={() => setSuccess(null)} className="ml-auto text-green-600 hover:text-green-800">
+                        <XCircle className="w-4 h-4" />
+                    </button>
+                </div>
+            )}
+
             {/* Header */}
             <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
                 <div>

@@ -26,6 +26,13 @@ async def process_document_task(
     organization_id: int
 ):
     """Background task to process document"""
+    import logging
+    import time
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting processing for document {document_id}")
+    task_start = time.time()
+    
     async with AsyncSessionLocal() as db:
         try:
             # Re-fetch document to ensure attached session
@@ -33,12 +40,17 @@ async def process_document_task(
             document = result.scalar_one_or_none()
             
             if not document:
+                logger.error(f"Document {document_id} not found")
                 return
 
             # Extract text
+            logger.info(f"Document {document_id}: Extracting text from {document.filename}")
+            extract_start = time.time()
             document.processing_status = "extracting"
             await db.commit()
             text = document_processor.extract_text(str(file_path))
+            extract_time = time.time() - extract_start
+            logger.info(f"Document {document_id}: Extracted {len(text)} characters in {extract_time:.1f}s")
             
             # Extract metadata if not provided
             if not document.jurisdiction or not document.year:
@@ -49,6 +61,8 @@ async def process_document_task(
                     document.year = extracted_metadata.get("year")
             
             # Chunk document
+            logger.info(f"Document {document_id}: Chunking document")
+            chunk_start = time.time()
             document.processing_status = "chunking"
             await db.commit()
             chunks = legal_chunker.chunk_document(
@@ -63,12 +77,16 @@ async def process_document_task(
                     "document_type": document.document_type.value
                 }
             )
+            chunk_time = time.time() - chunk_start
+            logger.info(f"Document {document_id}: Created {len(chunks)} chunks in {chunk_time:.1f}s")
             
             # Add text to chunks for storage
             for chunk in chunks:
                 chunk["metadata"]["text"] = chunk["text"]
             
             # Add to vector store
+            logger.info(f"Document {document_id}: Starting embedding for {len(chunks)} chunks")
+            embed_start = time.time()
             document.processing_status = "embedding"
             await db.commit()
             
@@ -76,6 +94,7 @@ async def process_document_task(
                 organization_id=organization_id,
                 chunks=chunks
             )
+            embed_time = time.time() - embed_start
             
             if success:
                 document.processing_status = "completed"
@@ -83,12 +102,18 @@ async def process_document_task(
                 document.chunk_count = len(chunks)
                 from datetime import datetime
                 document.processed_at = datetime.utcnow()
+                
+                total_time = time.time() - task_start
+                logger.info(f"Document {document_id}: Processing completed successfully in {total_time:.1f}s "
+                          f"(extract: {extract_time:.1f}s, chunk: {chunk_time:.1f}s, embed: {embed_time:.1f}s)")
             else:
                 document.processing_error = "Failed to add to vector store"
+                logger.error(f"Document {document_id}: Failed to add to vector store")
             
             await db.commit()
             
         except Exception as e:
+            logger.error(f"Document {document_id}: Processing failed with error: {e}", exc_info=True)
             document.processing_error = str(e)
             await db.commit()
 

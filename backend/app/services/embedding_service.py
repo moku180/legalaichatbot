@@ -54,13 +54,15 @@ class EmbeddingService:
         )
         return list(response.embeddings[0].values)
     
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
-    )
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
         """
-        Generate embeddings for multiple texts
+        Generate embeddings for multiple texts with adaptive batching
+        
+        Uses a fallback strategy:
+        1. Try batch of 100
+        2. If fails, try batches of 10
+        3. If fails, try parallel batches of 5
+        4. If fails, sequential processing
         
         Args:
             texts: List of texts to embed
@@ -68,39 +70,110 @@ class EmbeddingService:
         Returns:
             List of embedding vectors
         """
+        import asyncio
+        import logging
+        import time
+        
+        logger = logging.getLogger(__name__)
+        total_texts = len(texts)
+        logger.info(f"Starting embedding for {total_texts} chunks")
+        start_time = time.time()
+        
         embeddings = []
         
-        # Process in batches to avoid rate limits
-        batch_size = 100
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
+        # Try different batch sizes with adaptive fallback
+        batch_sizes = [100, 10, 5, 1]
+        
+        i = 0
+        while i < total_texts:
+            batch_processed = False
             
-            try:
-                # Embed batch of texts in one call
-                response = await self.client.aio.models.embed_content(
-                    model=self.model,
-                    contents=batch
-                )
+            for batch_size in batch_sizes:
+                if batch_processed:
+                    break
+                    
+                batch_end = min(i + batch_size, total_texts)
+                batch = texts[i:batch_end]
                 
-                if hasattr(response, 'embeddings'):
-                     for emb in response.embeddings:
-                        embeddings.append(list(emb.values))
-            except Exception as e:
-                print(f"Batch embedding failed, falling back to sequential: {e}")
-                # Fallback to sequential if batch fails
-                for text in batch:
-                    try:
+                try:
+                    if batch_size == 1:
+                        # Sequential processing (last resort)
+                        logger.debug(f"Processing chunk {i+1}/{total_texts} sequentially")
+                        response = await self._embed_single_with_retry(batch[0])
+                        embeddings.append(response)
+                        batch_processed = True
+                    elif batch_size == 5:
+                        # Parallel processing of small batches
+                        logger.info(f"Processing chunks {i+1}-{batch_end}/{total_texts} in parallel (batch size: {batch_size})")
+                        batch_embeddings = await self._embed_parallel(batch)
+                        embeddings.extend(batch_embeddings)
+                        batch_processed = True
+                    else:
+                        # Try larger batch
+                        logger.info(f"Processing chunks {i+1}-{batch_end}/{total_texts} (batch size: {batch_size})")
                         response = await self.client.aio.models.embed_content(
                             model=self.model,
-                            contents=text
+                            contents=batch
                         )
-                        embeddings.append(list(response.embeddings[0].values))
-                    except Exception as inner_e:
-                        print(f"Error embedding chunk: {inner_e}")
-                        # Append zero vector or skip? Better to consistency
-                        # For now, simplistic fallback handling
+                        
+                        if hasattr(response, 'embeddings'):
+                            for emb in response.embeddings:
+                                embeddings.append(list(emb.values))
+                            batch_processed = True
+                            logger.debug(f"Successfully embedded batch of {len(batch)} chunks")
+                
+                except Exception as e:
+                    logger.warning(f"Batch size {batch_size} failed: {str(e)[:100]}")
+                    # Try next smaller batch size
+                    continue
+            
+            if not batch_processed:
+                logger.error(f"Failed to embed chunk {i+1} after all retry strategies")
+                # Skip this chunk to avoid infinite loop
+                i += 1
+                continue
+            
+            # Move to next batch
+            i = batch_end
+            
+            # Log progress every 50 chunks
+            if len(embeddings) % 50 == 0 and len(embeddings) > 0:
+                elapsed = time.time() - start_time
+                rate = len(embeddings) / elapsed
+                eta = (total_texts - len(embeddings)) / rate if rate > 0 else 0
+                logger.info(f"Progress: {len(embeddings)}/{total_texts} chunks embedded ({elapsed:.1f}s elapsed, ETA: {eta:.1f}s)")
+        
+        elapsed = time.time() - start_time
+        logger.info(f"Completed embedding {len(embeddings)}/{total_texts} chunks in {elapsed:.1f}s")
         
         return embeddings
+    
+    async def _embed_single_with_retry(self, text: str, max_retries: int = 3) -> List[float]:
+        """Embed a single text with retry logic"""
+        import asyncio
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        for attempt in range(max_retries):
+            try:
+                response = await self.client.aio.models.embed_content(
+                    model=self.model,
+                    contents=text
+                )
+                return list(response.embeddings[0].values)
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"Failed to embed chunk after {max_retries} attempts: {e}")
+                    raise
+                logger.warning(f"Retry {attempt + 1}/{max_retries} for single embedding: {e}")
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+    
+    async def _embed_parallel(self, texts: List[str]) -> List[List[float]]:
+        """Embed multiple texts in parallel"""
+        import asyncio
+        
+        tasks = [self._embed_single_with_retry(text) for text in texts]
+        return await asyncio.gather(*tasks)
     
     def get_embedding_dimension(self) -> int:
         """

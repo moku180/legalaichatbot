@@ -43,8 +43,6 @@ ALWAYS:
 - Use simple, clear language
 - Distinguish between document-specific and general information
 - Provide comprehensive explanations, not just facts
-
-{LEGAL_DISCLAIMER}
 """
 
 # ... (Orchestrator, Retriever, Statutory, Case Law prompts remain/were updated previously) ...
@@ -71,8 +69,6 @@ NEVER:
 - Provide specific negotiation advice
 - Draft contract language
 - Make definitive legal judgments
-
-{LEGAL_DISCLAIMER}
 """
 
 # Orchestrator Agent Prompt
@@ -147,8 +143,6 @@ ALWAYS:
 - Indicate the jurisdiction when applicable.
 - Provide the exact legal text before interpretation (if available from documents).
 - Use simple language for explanations.
-
-{LEGAL_DISCLAIMER}
 """
 
 # Case Law Research Agent Prompt
@@ -171,8 +165,6 @@ ALWAYS:
 - Indicate court level and jurisdiction.
 - Explain whether the precedent is binding or persuasive.
 - Use general knowledge to explain legal concepts like "stare decisis", "ratio decidendi", etc.
-
-{LEGAL_DISCLAIMER}
 """
 
 # Contract Analysis Agent Prompt
@@ -199,8 +191,6 @@ NEVER:
 - Provide specific negotiation advice
 - Draft contract language
 - Make definitive legal judgments
-
-{LEGAL_DISCLAIMER}
 """
 
 # Compliance & Regulatory Agent Prompt
@@ -222,8 +212,6 @@ ALWAYS:
 - Provide clear rationale for verdict.
 - Indicate jurisdiction when applicable.
 - Suggest areas requiring expert review based on both specific regulations and general compliance risks.
-
-{LEGAL_DISCLAIMER}
 """
 
 # Verification & Citation Agent Prompt
@@ -272,6 +260,5 @@ Return JSON:
   "suggested_action": "what to do instead",
   "disclaimer_added": true/false
 }}
-
 {LEGAL_DISCLAIMER}
 """

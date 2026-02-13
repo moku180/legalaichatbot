@@ -30,6 +30,8 @@ async def process_document_task(
     """Background task to process document"""
     import logging
     import time
+    import gc
+    from app.services.embedding_service import embedding_service
     
     logger = logging.getLogger(__name__)
     logger.info(f"Starting processing for document {document_id}")
@@ -82,7 +84,10 @@ async def process_document_task(
             chunk_time = time.time() - chunk_start
             logger.info(f"Document {document_id}: Created {len(chunks)} chunks in {chunk_time:.1f}s")
             
-            # Add text to chunks for storage
+            # Free up memory: Original huge text string is no longer needed
+            del text
+            gc.collect()
+            
             for chunk in chunks:
                 chunk["metadata"]["text"] = chunk["text"]
             

@@ -143,7 +143,7 @@ class Settings(BaseSettings):
     
     # Document Storage
     UPLOAD_DIR: str = "./data/uploads"
-    MAX_UPLOAD_SIZE_MB: int = 50
+    MAX_UPLOAD_SIZE_MB: int = 10
     ALLOWED_EXTENSIONS: List[str] = [".pdf", ".docx", ".txt"]
     
     # AWS S3 Configuration

@@ -86,8 +86,9 @@ class EmbeddingService:
         embeddings = []
         
         # Try different batch sizes with adaptive fallback
-        # Reduced max batch size to 10 to prevent OOM
-        batch_sizes = [10, 5, 1]
+        # Try different batch sizes with adaptive fallback
+        # Reduced max batch size to 5 to prevent OOM on small instances
+        batch_sizes = [5, 2, 1]
         
         i = 0
         while i < total_texts:
@@ -107,7 +108,7 @@ class EmbeddingService:
                         response = await self._embed_single_with_retry(batch[0])
                         embeddings.append(response)
                         batch_processed = True
-                    elif batch_size == 5:
+                    elif batch_size == 2:
                         # Parallel processing of small batches
                         logger.info(f"Processing chunks {i+1}-{batch_end}/{total_texts} in parallel (batch size: {batch_size})")
                         batch_embeddings = await self._embed_parallel(batch)

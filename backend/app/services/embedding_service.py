@@ -143,6 +143,11 @@ class EmbeddingService:
             # Move to next batch
             i = batch_end
             
+            # Rate limiting for Gemini Free Tier (15 RPM)
+            # Sleep 4 seconds to ensure we don't exceed limit
+            # 60s / 15 reqs = 4s per request
+            await asyncio.sleep(4)
+            
             # Log progress every 50 chunks
             if len(embeddings) % 50 == 0 and len(embeddings) > 0:
                 elapsed = time.time() - start_time

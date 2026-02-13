@@ -7,6 +7,7 @@ import faiss
 from pathlib import Path
 from app.core.config import settings
 from app.services.embedding_service import embedding_service
+from app.services.s3_service import s3_service
 
 
 class VectorStore:
@@ -17,6 +18,52 @@ class VectorStore:
         self.base_path.mkdir(parents=True, exist_ok=True)
         self.indexes: Dict[int, faiss.Index] = {}
         self.metadatas: Dict[int, List[Dict[str, Any]]] = {}
+        
+    async def sync_from_s3(self, organization_id: int) -> bool:
+        """Download index files from S3 if enabled"""
+        if not s3_service.enabled:
+            return False
+            
+        index_path = self._get_index_path(organization_id)
+        metadata_path = self._get_metadata_path(organization_id)
+        
+        # S3 keys
+        index_key = f"vector_stores/org_{organization_id}_index.faiss"
+        metadata_key = f"vector_stores/org_{organization_id}_metadata.pkl"
+        
+        # Download if exists in S3
+        synced = False
+        if s3_service.file_exists(index_key):
+            s3_service.download_file(index_key, str(index_path))
+            synced = True
+            
+        if s3_service.file_exists(metadata_key):
+            s3_service.download_file(metadata_key, str(metadata_path))
+            
+        return synced
+
+    async def sync_to_s3(self, organization_id: int) -> bool:
+        """Upload index files to S3 if enabled"""
+        if not s3_service.enabled:
+            return False
+            
+        index_path = self._get_index_path(organization_id)
+        metadata_path = self._get_metadata_path(organization_id)
+        
+        if not index_path.exists():
+            return False
+            
+        # S3 keys
+        index_key = f"vector_stores/org_{organization_id}_index.faiss"
+        metadata_key = f"vector_stores/org_{organization_id}_metadata.pkl"
+        
+        # Upload
+        s3_service.upload_file_path(str(index_path), index_key)
+        
+        if metadata_path.exists():
+            s3_service.upload_file_path(str(metadata_path), metadata_key)
+            
+        return True
     
     def _get_index_path(self, organization_id: int) -> Path:
         """Get path for organization's FAISS index"""
@@ -32,7 +79,18 @@ class VectorStore:
         metadata_path = self._get_metadata_path(organization_id)
         
         if not index_path.exists():
-            return False
+            # Try to sync from S3 first
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                 # We're in an async context, but this method is sync. 
+                 # This is tricky. Ideally load_index should be async.
+                 # For now, we'll just check if files exist, if not return False.
+                 # The calling methods (add_documents, search) are async and should call sync_from_s3 first.
+                 pass
+            
+            if not index_path.exists():
+                return False
         
         try:
             # Load FAISS index
@@ -100,6 +158,9 @@ class VectorStore:
             
             # Load or create index
             if organization_id not in self.indexes:
+                # Try to sync from S3 first
+                await self.sync_from_s3(organization_id)
+                
                 if not self.load_index(organization_id):
                     # Create new index
                     self.indexes[organization_id] = faiss.IndexFlatL2(dimension)
@@ -115,7 +176,11 @@ class VectorStore:
             import asyncio
             from functools import partial
             loop = asyncio.get_running_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, partial(self.save_index, organization_id))
+            
+            # Sync to S3
+            await self.sync_to_s3(organization_id)
             
             return True
             
@@ -144,6 +209,9 @@ class VectorStore:
         """
         # Load index if not in memory
         if organization_id not in self.indexes:
+            # Try to sync from S3 first
+            await self.sync_from_s3(organization_id)
+            
             if not self.load_index(organization_id):
                 return []
         

@@ -39,3 +39,6 @@ aiofiles==23.2.1
 
 # Monitoring & Logging
 loguru==0.7.2
+
+# Cloud Storage
+boto3==1.34.0

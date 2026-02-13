@@ -17,6 +17,7 @@ from app.api.schemas import DocumentResponse
 from app.rag.document_processor import document_processor
 from app.rag.chunker import legal_chunker
 from app.rag.vector_store import vector_store
+from app.services.s3_service import s3_service
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -153,13 +154,26 @@ async def upload_document(
             detail=f"File too large. Max size: {settings.MAX_UPLOAD_SIZE_MB}MB"
         )
     
-    # Save file
-    upload_dir = Path(settings.UPLOAD_DIR) / f"org_{organization.id}"
-    upload_dir.mkdir(parents=True, exist_ok=True)
     
-    file_path = upload_dir / file.filename
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # Save file
+    if s3_service.enabled:
+        # Use S3
+        file_path = f"org_{organization.id}/{file.filename}"
+        if not await s3_service.upload_file(file, file_path):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to upload file to S3"
+            )
+        # Store S3 key as file_path
+    else:
+        # Use local storage
+        upload_dir = Path(settings.UPLOAD_DIR) / f"org_{organization.id}"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        file_path_obj = upload_dir / file.filename
+        with open(file_path_obj, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        file_path = str(file_path_obj)
     
     # Create document record
     document = Document(
@@ -268,7 +282,9 @@ async def delete_document(
     
     # Delete file
     try:
-        if os.path.exists(document.file_path):
+        if s3_service.enabled:
+            s3_service.delete_file(document.file_path)
+        elif os.path.exists(document.file_path):
             os.remove(document.file_path)
     except Exception:
         pass

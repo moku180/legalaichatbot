@@ -19,22 +19,53 @@ class DocumentProcessor:
         Extract text from document
         
         Args:
-            file_path: Path to document file
+            file_path: Path to document file (local path or S3 key)
         
         Returns:
             Extracted text
         """
-        file_path = Path(file_path)
-        extension = file_path.suffix.lower()
+        from app.services.s3_service import s3_service
         
-        if extension == '.pdf':
-            return self._extract_from_pdf(file_path)
-        elif extension == '.docx':
-            return self._extract_from_docx(file_path)
-        elif extension == '.txt':
-            return self._extract_from_txt(file_path)
+        # Check if using S3
+        temp_file = None
+        if s3_service.enabled and not os.path.exists(file_path):
+            # Assume file_path is S3 key, download to temp
+            import tempfile
+            import uuid
+            
+            suffix = Path(file_path).suffix
+            temp_dir = Path(settings.UPLOAD_DIR) / "temp"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            temp_path = temp_dir / f"{uuid.uuid4()}{suffix}"
+            
+            if s3_service.download_file(file_path, str(temp_path)):
+                file_path_obj = temp_path
+                temp_file = temp_path
+            else:
+                raise Exception(f"Failed to download file from S3: {file_path}")
         else:
-            raise ValueError(f"Unsupported file type: {extension}")
+            file_path_obj = Path(file_path)
+            
+        extension = file_path_obj.suffix.lower()
+        
+        try:
+            if extension == '.pdf':
+                text = self._extract_from_pdf(file_path_obj)
+            elif extension == '.docx':
+                text = self._extract_from_docx(file_path_obj)
+            elif extension == '.txt':
+                text = self._extract_from_txt(file_path_obj)
+            else:
+                raise ValueError(f"Unsupported file type: {extension}")
+        finally:
+            # Clean up temp file
+            if temp_file and temp_file.exists():
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
+            
+        return text
     
     def _extract_from_pdf(self, file_path: Path) -> str:
         """Extract text from PDF"""

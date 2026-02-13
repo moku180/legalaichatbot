@@ -12,6 +12,16 @@ from app.api import auth, documents, chat
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
+    import logging
+    
+    # Configure logging to stdout for Railway
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("Starting up Legal AI Backend...")
+    
     # Startup
     await init_db()
     await rate_limiter.init()

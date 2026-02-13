@@ -78,10 +78,25 @@ async def submit_query(
         
         # Step 4: Route to appropriate specialist agent
         intent = classification.get("intent", "general_legal")
-        # Ensure intent is a string (default fallback)
         if not isinstance(intent, str):
             intent = "general_legal"
             
+        # Refine intent based on retrieved documents
+        # If the user asked for "contract analysis" but the document is a "judgment", stick to the document type
+        if retrieved_chunks and intent == "contract_analysis":
+            doc_types = [chunk["metadata"].get("document_type", "other") for chunk in retrieved_chunks]
+            # If predominantly judgments or statutes, switch intent
+            if any(dt in ["judgment", "statute", "regulation"] for dt in doc_types):
+                logger.info("Switching intent from contract_analysis to case_law_research based on document type")
+                intent = "case_law_research"
+            elif all(dt == "other" for dt in doc_types):
+                # If "other" (uploaded without type), checking keywords in query or text might be needed
+                # For now, fallback to hybrid if it looks like a court case
+                first_text = retrieved_chunks[0]["text"].lower()
+                if "petitioner" in first_text or "respondent" in first_text or "vs" in first_text or "court" in first_text:
+                    logger.info("Switching intent from contract_analysis to case_law_research based on text content")
+                    intent = "case_law_research"
+        
         response_text = ""
         total_tokens = 0
         total_cost = 0.0

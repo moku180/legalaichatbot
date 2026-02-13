@@ -1,27 +1,6 @@
 # ⚖️ Legal AI SaaS Platform: Technical Whitepaper
 > **Architecting the Future of Agentic Legal Intelligence**
 
-[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/Framework-FastAPI-green.svg)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/Frontend-React-61DAFB.svg)](https://react.dev/)
-[![Docker](https://img.shields.io/badge/Deploy-Docker-2496ED.svg)](https://www.docker.com/)
-[![RAG](https://img.shields.io/badge/AI-Advanced%20RAG-purple)]()
-
----
-
-## 📑 Table of Contents
-1.  [Executive Summary](#-executive-summary)
-2.  [The "Legal Singularity" Vision](#-the-legal-singularity-vision)
-3.  [System Architecture](#-system-architecture)
-4.  [Deep Dive: The 8-Agent Neural Network](#-deep-dive-the-8-agent-neural-network)
-5.  [Advanced RAG Pipeline](#-advanced-rag-pipeline-retrieval-augmented-generation)
-6.  [Security & Compliance Manifesto](#-security--compliance-manifesto)
-7.  [Operational Workflow](#-operational-workflow)
-8.  [SaaS Business Model & Tenancy](#-saas-business-model--tenancy)
-9.  [Deployment Guide](#-deployment-guide)
-
----
 
 ## 🚀 Executive Summary
 

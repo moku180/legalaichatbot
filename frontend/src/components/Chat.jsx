@@ -1,11 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { chatAPI } from '../lib/api';
 import { Send, AlertCircle, CheckCircle, Info } from 'lucide-react';
 
 export default function Chat() {
     const [query, setQuery] = useState('');
-    const [messages, setMessages] = useState([]);
+    const [messages, setMessages] = useState(() => {
+        const saved = localStorage.getItem('chat_history');
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    // Auto-scroll to bottom
+    const messagesEndRef = useRef(null);
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+
+    useEffect(() => {
+        localStorage.setItem('chat_history', JSON.stringify(messages));
+        scrollToBottom();
+    }, [messages]);
 
     const chatMutation = useMutation({
         mutationFn: chatAPI.query,
@@ -132,6 +146,7 @@ export default function Chat() {
                         </div>
                     </div>
                 )}
+                <div ref={messagesEndRef} />
             </div>
 
             {/* Input */}

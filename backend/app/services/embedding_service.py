@@ -12,6 +12,7 @@ class EmbeddingService:
         # Configure Gemini API with new SDK
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
         self.model = settings.GEMINI_EMBEDDING_MODEL
+        self.request_count = 0
     
     @retry(
         stop=stop_after_attempt(3),
@@ -31,7 +32,7 @@ class EmbeddingService:
             model=self.model,
             contents=text
         )
-        # The response structure is response.embeddings[0].values
+        self.request_count += 1
         return list(response.embeddings[0].values)
     
     @retry(
@@ -52,6 +53,7 @@ class EmbeddingService:
             model=self.model,
             contents=query
         )
+        self.request_count += 1
         return list(response.embeddings[0].values)
     
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
@@ -74,15 +76,18 @@ class EmbeddingService:
         import logging
         import time
         
+        
         logger = logging.getLogger(__name__)
         total_texts = len(texts)
         logger.info(f"Starting embedding for {total_texts} chunks")
         start_time = time.time()
+        initial_request_count = self.request_count
         
         embeddings = []
         
         # Try different batch sizes with adaptive fallback
-        batch_sizes = [100, 10, 5, 1]
+        # Reduced max batch size to 10 to prevent OOM
+        batch_sizes = [10, 5, 1]
         
         i = 0
         while i < total_texts:
@@ -115,6 +120,7 @@ class EmbeddingService:
                             model=self.model,
                             contents=batch
                         )
+                        self.request_count += 1
                         
                         if hasattr(response, 'embeddings'):
                             for emb in response.embeddings:
@@ -144,7 +150,9 @@ class EmbeddingService:
                 logger.info(f"Progress: {len(embeddings)}/{total_texts} chunks embedded ({elapsed:.1f}s elapsed, ETA: {eta:.1f}s)")
         
         elapsed = time.time() - start_time
+        requests_made = self.request_count - initial_request_count
         logger.info(f"Completed embedding {len(embeddings)}/{total_texts} chunks in {elapsed:.1f}s")
+        logger.info(f"Total API Requests used: {requests_made}")
         
         return embeddings
     
@@ -160,6 +168,7 @@ class EmbeddingService:
                     model=self.model,
                     contents=text
                 )
+                self.request_count += 1
                 return list(response.embeddings[0].values)
             except Exception as e:
                 if attempt == max_retries - 1:

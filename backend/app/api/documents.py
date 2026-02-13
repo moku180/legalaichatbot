@@ -19,6 +19,7 @@ from app.rag.chunker import legal_chunker
 from app.rag.vector_store import vector_store
 from app.services.s3_service import s3_service
 
+
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 async def process_document_task(
@@ -155,25 +156,19 @@ async def upload_document(
         )
     
     
-    # Save file
-    if s3_service.enabled:
-        # Use S3
-        file_path = f"org_{organization.id}/{file.filename}"
-        if not await s3_service.upload_file(file, file_path):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to upload file to S3"
-            )
-        # Store S3 key as file_path
-    else:
-        # Use local storage
-        upload_dir = Path(settings.UPLOAD_DIR) / f"org_{organization.id}"
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        
-        file_path_obj = upload_dir / file.filename
-        with open(file_path_obj, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        file_path = str(file_path_obj)
+    # Save file to S3
+    if not s3_service.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="S3 is not enabled. Please configure AWS credentials."
+        )
+
+    file_path = f"org_{organization.id}/{file.filename}"
+    if not await s3_service.upload_file(file, file_path):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload file to S3"
+        )
     
     # Create document record
     document = Document(
@@ -284,8 +279,6 @@ async def delete_document(
     try:
         if s3_service.enabled:
             s3_service.delete_file(document.file_path)
-        elif os.path.exists(document.file_path):
-            os.remove(document.file_path)
     except Exception:
         pass
     

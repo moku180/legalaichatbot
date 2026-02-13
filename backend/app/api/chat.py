@@ -109,9 +109,14 @@ async def submit_query(
             agents_used.append("case_law_researcher")
             
         elif intent == "contract_analysis":
+            # If we have retrieved chunks, use them as the contract text
+            contract_text_input = query_data.query
+            if retrieved_chunks:
+                contract_text_input = "\n\n".join([chunk["text"] for chunk in retrieved_chunks])
+            
             result = await contract_analyzer_agent.analyze_contract(
                 query=query_data.query,
-                contract_text=query_data.query  # Assume query contains contract
+                contract_text=contract_text_input
             )
             response_text = result.get("contract_analysis", "")
             total_tokens += result.get("tokens_used", 0)

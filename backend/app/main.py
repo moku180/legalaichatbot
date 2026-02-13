@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     # Startup
     await init_db()
     await rate_limiter.init()
-    yield
+    yield   
     # Shutdown
     await close_db()
     await rate_limiter.close()

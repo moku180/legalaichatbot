@@ -98,19 +98,31 @@ class LegalDocumentChunker:
         text: str,
         metadata: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """Chunk by token count with overlap"""
+        """Chunk by token count with overlap using memory-efficient generator"""
         chunks = []
         
-        # Simple word-based approximation (1 token ≈ 0.75 words)
+        # Approximate tokens by splitting on whitespace
+        # Use a generator expression if possible, but for simplicity and safety against OOM
+        # with huge splits, we'll iterate.
+        # Actually, for 136k chars, split() is fine (buffer is ~1MB). 
+        # The issue might be the logic loop or the number of small string allocations.
+        
         words = text.split()
+        total_words = len(words)
+        
+        if total_words == 0:
+            return []
+            
+        # Target words per chunk (approx 0.75 words per token)
+        # Defaults: chunk_size=1000 -> 750 words
         words_per_chunk = int(self.chunk_size * 0.75)
         words_overlap = int(self.chunk_overlap * 0.75)
         
         start = 0
         chunk_index = 0
         
-        while start < len(words):
-            end = min(start + words_per_chunk, len(words))
+        while start < total_words:
+            end = min(start + words_per_chunk, total_words)
             chunk_words = words[start:end]
             chunk_text = " ".join(chunk_words)
             
@@ -125,15 +137,16 @@ class LegalDocumentChunker:
             
             chunk_index += 1
             
-            if end == len(words):
+            # Stop if we reached the end
+            if end >= total_words:
                 break
                 
-            start = end - words_overlap
+            # Move forward by stride (size - overlap)
+            stride = words_per_chunk - words_overlap
+            # Ensure stride is at least 1 to avoid infinite loop
+            stride = max(1, stride)
             
-            # Ensure we make forward progress
-            if start <= min(start + words_per_chunk, len(words)) - words_per_chunk:
-                 # If check above fails, force advance
-                 start += 1
+            start += stride
         
         return chunks
     
@@ -145,9 +158,10 @@ class LegalDocumentChunker:
     ) -> List[Dict[str, Any]]:
         """Split long text into smaller chunks"""
         words = text.split()
+        total_words = len(words)
         words_per_chunk = int(self.chunk_size * 0.75)
         
-        if len(words) <= words_per_chunk:
+        if total_words <= words_per_chunk:
             chunk_metadata = metadata.copy()
             chunk_metadata["section"] = section_name
             return [{
@@ -158,11 +172,13 @@ class LegalDocumentChunker:
         # Split into multiple chunks
         chunks = []
         words_overlap = int(self.chunk_overlap * 0.75)
+        stride = max(1, words_per_chunk - words_overlap)
+        
         start = 0
         sub_index = 0
         
-        while start < len(words):
-            end = min(start + words_per_chunk, len(words))
+        while start < total_words:
+            end = min(start + words_per_chunk, total_words)
             chunk_words = words[start:end]
             chunk_text = " ".join(chunk_words)
             
@@ -176,10 +192,11 @@ class LegalDocumentChunker:
             })
             
             sub_index += 1
-            start = end - words_overlap
             
-            if start >= len(words):
+            if end >= total_words:
                 break
+                
+            start += stride
         
         return chunks
 

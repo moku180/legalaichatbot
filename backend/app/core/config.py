@@ -151,7 +151,7 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     AWS_REGION: str = "us-east-1"
     AWS_BUCKET_NAME: Optional[str] = None
-    USE_S3: bool = False  # Set to True when configured
+    USE_S3: bool = True  # Enable S3 by default for production persistence
     
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
